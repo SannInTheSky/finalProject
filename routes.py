@@ -33,6 +33,37 @@ def token_required(f):
         return f(current_user, *args, **kwargs)
     
     return decorated
+
+# ==================== HELPER FUNCTIONS ====================
+def format_student_data(student):
+    """Convert database tuple to dictionary"""
+    return {
+        'id': student[0],
+        'name': student[1],
+        'course': student[2],
+        'age': student[3]
+    }
+
+# ==================== AUTH ENDPOINTS ====================
+@app.route('/api/login', methods=['POST'])
+def login():
+    """Generate JWT token"""
+    auth = request.authorization
+    
+    if not auth or not auth.username or not auth.password:
+        return jsonify({'error': 'Login required'}), 401
+    
+    # In a real app, verify against database
+    if auth.username == 'admin' and auth.password == 'password':
+        token = jwt.encode({
+            'user': auth.username,
+            'exp': datetime.utcnow() + timedelta(hours=1)
+        }, app.config['SECRET_KEY'])
+        
+        return jsonify({'token': token}), 200
+    
+    return jsonify({'error': 'Invalid credentials'}), 401
+
 @app.route('/api/students', methods=['POST'])
 def create_student():
     data = request.get_json()
