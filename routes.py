@@ -91,19 +91,27 @@ def login_page():
             cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
             user = cursor.fetchone()
             
-            if user and check_password(user[2], password):
-                token = jwt.encode({
-                    'user_id': user[0],
-                    'username': user[1],
-                    'exp': datetime.utcnow() + timedelta(hours=24)
-                }, app.config['SECRET_KEY'])
-                
-                session['jwt_token'] = token
-                session['username'] = username
-                
-                return redirect(url_for('home'))
+            if user:
+                # Check password (without email column)
+                hashed_password = user[2]  # Index 2 is password column
+                if bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8')):
+                    # Generate JWT token
+                    token = jwt.encode({
+                        'user_id': user[0],  # id
+                        'username': user[1],  # username
+                        'exp': datetime.utcnow() + timedelta(hours=24)
+                    }, app.config['SECRET_KEY'])
+                    
+                    # Store token in session
+                    session['jwt_token'] = token
+                    session['username'] = username
+                    
+                    flash('Login successful!', 'success')
+                    return redirect(url_for('home'))
+                else:
+                    flash('Invalid password', 'danger')
             else:
-                flash('Invalid username or password', 'danger')
+                flash('User not found', 'danger')
                 
         except Exception as e:
             flash('Login error: ' + str(e), 'danger')
@@ -196,7 +204,7 @@ def token_required(f):
 # ==================== API AUTH ENDPOINT ====================
 @app.route('/api/login', methods=['POST'])
 def api_login():
-    """Generate JWT token"""
+    """Generate JWT token for API access"""
     auth = request.authorization
     
     if not auth or not auth.username or not auth.password:
@@ -207,13 +215,16 @@ def api_login():
         cursor.execute("SELECT * FROM users WHERE username = %s", (auth.username,))
         user = cursor.fetchone()
         
-        if user and check_password(user[2], auth.password):
-            token = jwt.encode({
-                'user': auth.username,
-                'exp': datetime.utcnow() + timedelta(hours=1)
-            }, app.config['SECRET_KEY'])
-            
-            return jsonify({'token': token}), 200
+        if user:
+            # Check password
+            hashed_password = user[2]  # password column
+            if bcrypt.checkpw(auth.password.encode('utf-8'), hashed_password.encode('utf-8')):
+                token = jwt.encode({
+                    'user': auth.username,
+                    'exp': datetime.utcnow() + timedelta(hours=1)
+                }, app.config['SECRET_KEY'])
+                
+                return jsonify({'token': token}), 200
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
