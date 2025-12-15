@@ -1,12 +1,168 @@
-from flask import Flask, request, jsonify
+# routes.py
+from flask import render_template, request, redirect, url_for, flash, session, jsonify
 from flask_mysqldb import MySQL
 import jwt
 from functools import wraps
 from datetime import datetime, timedelta
+import bcrypt
 
-# Initialize app in app.py, then import it here
 from app import app, mysql
-from utils import json_to_xml
+
+# ==================== HELPER FUNCTIONS ====================
+def hash_password(password):
+    """Hash a password for storing."""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def check_password(hashed_password, user_password):
+    """Verify a stored password against one provided by user"""
+    return bcrypt.checkpw(user_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+# ==================== WEB PAGES ====================
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/students')
+def students_page():
+    """Students list page with search"""
+    search_query = request.args.get('q', '')
+    
+    try:
+        cursor = mysql.connection.cursor()
+        
+        if search_query:
+            cursor.execute(
+                "SELECT * FROM students WHERE name LIKE %s OR course LIKE %s",
+                (f'%{search_query}%', f'%{search_query}%')
+            )
+        else:
+            cursor.execute("SELECT * FROM students")
+        
+        students = cursor.fetchall()
+        
+        student_list = []
+        for student in students:
+            student_list.append({
+                'id': student[0],
+                'name': student[1],
+                'course': student[2],
+                'age': student[3]
+            })
+        
+        return render_template('students.html', 
+                              students=student_list, 
+                              search_query=search_query)
+    except Exception as e:
+        return render_template('error.html', error=str(e))
+
+@app.route('/students/create')
+def create_page():
+    return render_template('create.html')
+
+@app.route('/students/<int:student_id>/edit')
+def edit_student_page(student_id):
+    try:
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+        student = cursor.fetchone()
+        
+        if not student:
+            return "Student not found", 404
+        
+        student_data = {
+            'id': student[0],
+            'name': student[1],
+            'course': student[2],
+            'age': student[3]
+        }
+        
+        return render_template('update.html', student=student_data)
+    except Exception as e:
+        return str(e), 500
+
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        try:
+            cursor = mysql.connection.cursor()
+            cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+            
+            if user and check_password(user[2], password):
+                token = jwt.encode({
+                    'user_id': user[0],
+                    'username': user[1],
+                    'exp': datetime.utcnow() + timedelta(hours=24)
+                }, app.config['SECRET_KEY'])
+                
+                session['jwt_token'] = token
+                session['username'] = username
+                
+                return redirect(url_for('home'))
+            else:
+                flash('Invalid username or password', 'danger')
+                
+        except Exception as e:
+            flash('Login error: ' + str(e), 'danger')
+    
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register_page():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        email = request.form.get('email')
+        
+        if not username or not password:
+            flash('Username and password are required', 'danger')
+            return render_template('register.html')
+        
+        if len(password) < 6:
+            flash('Password must be at least 6 characters', 'danger')
+            return render_template('register.html')
+        
+        try:
+            cursor = mysql.connection.cursor()
+            
+            cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+            if cursor.fetchone():
+                flash('Username already exists', 'danger')
+                return render_template('register.html')
+            
+            if email:
+                cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+                if cursor.fetchone():
+                    flash('Email already registered', 'danger')
+                    return render_template('register.html')
+            
+            hashed_password = hash_password(password)
+            cursor.execute(
+                "INSERT INTO users (username, password, email) VALUES (%s, %s, %s)",
+                (username, hashed_password, email)
+            )
+            mysql.connection.commit()
+            
+            flash('Registration successful! Please login.', 'success')
+            return redirect(url_for('login_page'))
+            
+        except Exception as e:
+            flash('Registration error: ' + str(e), 'danger')
+    
+    return render_template('register.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out', 'info')
+    return redirect(url_for('home'))
+
+# ==================== REST OF YOUR API ROUTES ====================
+# Keep your existing API routes below...
+# JWT decorator, login API, CRUD operations, etc.
 
 # ==================== JWT Authentication Decorator ====================
 def token_required(f):
@@ -14,7 +170,6 @@ def token_required(f):
     def decorated(*args, **kwargs):
         token = None
         
-        # Check if token is in the header
         if 'Authorization' in request.headers:
             auth_header = request.headers['Authorization']
             if 'Bearer' in auth_header:
@@ -26,7 +181,6 @@ def token_required(f):
             return jsonify({'error': 'Token is missing'}), 401
         
         try:
-            # Decode the token
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
             current_user = data['user']
         except jwt.ExpiredSignatureError:
@@ -38,27 +192,34 @@ def token_required(f):
     
     return decorated
 
-# ==================== AUTH ENDPOINTS ====================
+# ==================== API AUTH ENDPOINT ====================
 @app.route('/api/login', methods=['POST'])
-def login():
+def api_login():
     """Generate JWT token"""
     auth = request.authorization
     
     if not auth or not auth.username or not auth.password:
         return jsonify({'error': 'Login required'}), 401
     
-    # In a real app, verify against database
-    if auth.username == 'admin' and auth.password == 'password':
-        token = jwt.encode({
-            'user': auth.username,
-            'exp': datetime.utcnow() + timedelta(hours=1)
-        }, app.config['SECRET_KEY'])
+    try:
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT * FROM users WHERE username = %s", (auth.username,))
+        user = cursor.fetchone()
         
-        return jsonify({'token': token}), 200
+        if user and check_password(user[2], auth.password):
+            token = jwt.encode({
+                'user': auth.username,
+                'exp': datetime.utcnow() + timedelta(hours=1)
+            }, app.config['SECRET_KEY'])
+            
+            return jsonify({'token': token}), 200
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
     
     return jsonify({'error': 'Invalid credentials'}), 401
 
-# ==================== CRUD ENDPOINTS ====================
+# ==================== API CRUD ENDPOINTS ====================
 @app.route('/api/students', methods=['POST'])
 def create_student():
     data = request.get_json()
@@ -85,6 +246,8 @@ def create_student():
     mysql.connection.commit()
     
     return jsonify({'message': 'Student created', 'id': cursor.lastrowid}), 201
+
+# ... rest of your API routes ...
 
 # Get all students
 @app.route('/api/students', methods=['GET'])
