@@ -25,3 +25,58 @@ def create_student():
     
     return jsonify({'message': 'Student created', 'id': cursor.lastrowid}), 201
 
+# Get all students
+@app.route('/api/students', methods=['GET'])
+def get_all_students():
+    try:
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT * FROM students")
+        students = cursor.fetchall()
+        
+        # Format as list of dictionaries
+        student_list = []
+        for student in students:
+            student_list.append({
+                'id': student[0],
+                'name': student[1],
+                'course': student[2],
+                'age': student[3]
+            })
+        
+        format_type = request.args.get('format', 'json')
+        
+        if format_type == 'xml':
+            return json_to_xml(student_list), 200, {'Content-Type': 'application/xml'}
+        else:
+            return jsonify(student_list), 200
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+# Get single student by ID
+@app.route('/api/students/<int:student_id>', methods=['GET'])
+def get_student(student_id):
+    try:
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+        student = cursor.fetchone()
+        
+        if not student:
+            return jsonify({'error': 'Student not found'}), 404
+        
+        student_data = {
+            'id': student[0],
+            'name': student[1],
+            'course': student[2],
+            'age': student[3]
+        }
+        
+        format_type = request.args.get('format', 'json')
+        
+        if format_type == 'xml':
+            return json_to_xml(student_data), 200, {'Content-Type': 'application/xml'}
+        else:
+            return jsonify(student_data), 200
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
