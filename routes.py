@@ -16,7 +16,11 @@ def token_required(f):
         
         # Check if token is in the header
         if 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split()[1] if 'Bearer' in request.headers['Authorization'] else request.headers['Authorization']
+            auth_header = request.headers['Authorization']
+            if 'Bearer' in auth_header:
+                token = auth_header.split()[1]
+            else:
+                token = auth_header
         
         if not token:
             return jsonify({'error': 'Token is missing'}), 401
@@ -33,16 +37,6 @@ def token_required(f):
         return f(current_user, *args, **kwargs)
     
     return decorated
-
-# ==================== HELPER FUNCTIONS ====================
-def format_student_data(student):
-    """Convert database tuple to dictionary"""
-    return {
-        'id': student[0],
-        'name': student[1],
-        'course': student[2],
-        'age': student[3]
-    }
 
 # ==================== AUTH ENDPOINTS ====================
 @app.route('/api/login', methods=['POST'])
@@ -64,6 +58,7 @@ def login():
     
     return jsonify({'error': 'Invalid credentials'}), 401
 
+# ==================== CRUD ENDPOINTS ====================
 @app.route('/api/students', methods=['POST'])
 def create_student():
     data = request.get_json()
@@ -118,7 +113,7 @@ def get_all_students():
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
+
 # Get single student by ID
 @app.route('/api/students/<int:student_id>', methods=['GET'])
 def get_student(student_id):
@@ -146,11 +141,11 @@ def get_student(student_id):
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
+
 # Update student by ID
 @app.route('/api/students/<int:student_id>', methods=['PUT'])
-@token_required  # JWT authentication decorator
-def update_student(student_id):
+@token_required
+def update_student(current_user, student_id):
     try:
         data = request.get_json()
         
@@ -214,11 +209,11 @@ def update_student(student_id):
     except Exception as e:
         mysql.connection.rollback()
         return jsonify({'error': str(e)}), 500
-    
-    # Delete student by ID
+
+# Delete student by ID
 @app.route('/api/students/<int:student_id>', methods=['DELETE'])
-@token_required  # JWT authentication decorator
-def delete_student(student_id):
+@token_required
+def delete_student(current_user, student_id):
     try:
         cursor = mysql.connection.cursor()
         
@@ -254,4 +249,50 @@ def delete_student(student_id):
             
     except Exception as e:
         mysql.connection.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# Search students
+@app.route('/api/students/search', methods=['GET'])
+def search_students():
+    search_term = request.args.get('q', '')
+    
+    if not search_term:
+        return jsonify({'error': 'Search query parameter "q" is required'}), 400
+    
+    try:
+        cursor = mysql.connection.cursor()
+        # Search in name and course fields
+        cursor.execute(
+            "SELECT * FROM students WHERE name LIKE %s OR course LIKE %s",
+            (f'%{search_term}%', f'%{search_term}%')
+        )
+        students = cursor.fetchall()
+        
+        # Format results
+        student_list = []
+        for student in students:
+            student_list.append({
+                'id': student[0],
+                'name': student[1],
+                'course': student[2],
+                'age': student[3]
+            })
+        
+        # Check format parameter
+        format_type = request.args.get('format', 'json')
+        
+        if format_type == 'xml':
+            return json_to_xml({
+                'search_term': search_term,
+                'results': student_list,
+                'count': len(student_list)
+            }), 200, {'Content-Type': 'application/xml'}
+        else:
+            return jsonify({
+                'search_term': search_term,
+                'results': student_list,
+                'count': len(student_list)
+            }), 200
+            
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
