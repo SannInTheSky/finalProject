@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="text-center">
+            <h1>Student Management System</h1>
+            <p class="lead">Manage student records with REST API</p>
+            
+            <div class="mt-4">
+                <a href="/students" class="btn btn-primary btn-lg m-2">View Students</a>
+                <a href="/students/create" class="btn btn-success btn-lg m-2">Add Student</a>
+                <a href="/login" class="btn btn-secondary btn-lg m-2">Login</a>
+            </div>
+            
+            <div class="mt-5">
+                <h4>API Endpoints:</h4>
+                <div class="text-start mt-3" style="max-width: 600px; margin: 0 auto;">
+                    <p><strong>GET</strong> <code>/api/students</code> - List all students</p>
+                    <p><strong>GET</strong> <code>/api/students/{id}</code> - Get student by ID</p>
+                    <p><strong>POST</strong> <code>/api/students</code> - Create student</p>
+                    <p><strong>PUT</strong> <code>/api/students/{id}</code> - Update student</p>
+                    <p><strong>DELETE</strong> <code>/api/students/{id}</code> - Delete student</p>
+                    <p><strong>GET</strong> <code>/api/students/search?q=term</code> - Search</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
