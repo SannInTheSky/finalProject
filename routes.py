@@ -1,3 +1,38 @@
+from flask import Flask, request, jsonify
+from flask_mysqldb import MySQL
+import jwt
+from functools import wraps
+from datetime import datetime, timedelta
+
+# Initialize app in app.py, then import it here
+from app import app, mysql
+from utils import json_to_xml
+
+# ==================== JWT Authentication Decorator ====================
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        
+        # Check if token is in the header
+        if 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split()[1] if 'Bearer' in request.headers['Authorization'] else request.headers['Authorization']
+        
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+        
+        try:
+            # Decode the token
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+            current_user = data['user']
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+        
+        return f(current_user, *args, **kwargs)
+    
+    return decorated
 @app.route('/api/students', methods=['POST'])
 def create_student():
     data = request.get_json()
