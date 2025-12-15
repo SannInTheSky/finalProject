@@ -115,10 +115,15 @@ def register_page():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        email = request.form.get('email')
+        confirm_password = request.form.get('confirm_password')
         
+        # Basic validation
         if not username or not password:
             flash('Username and password are required', 'danger')
+            return render_template('register.html')
+        
+        if password != confirm_password:
+            flash('Passwords do not match', 'danger')
             return render_template('register.html')
         
         if len(password) < 6:
@@ -128,21 +133,17 @@ def register_page():
         try:
             cursor = mysql.connection.cursor()
             
+            # Check if username exists
             cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
             if cursor.fetchone():
                 flash('Username already exists', 'danger')
                 return render_template('register.html')
             
-            if email:
-                cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
-                if cursor.fetchone():
-                    flash('Email already registered', 'danger')
-                    return render_template('register.html')
-            
-            hashed_password = hash_password(password)
+            # Hash password and insert user WITHOUT email
+            hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             cursor.execute(
-                "INSERT INTO users (username, password, email) VALUES (%s, %s, %s)",
-                (username, hashed_password, email)
+                "INSERT INTO users (username, password) VALUES (%s, %s)",
+                (username, hashed_password)
             )
             mysql.connection.commit()
             
