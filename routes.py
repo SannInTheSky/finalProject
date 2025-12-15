@@ -80,3 +80,71 @@ def get_student(student_id):
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+# Update student by ID
+@app.route('/api/students/<int:student_id>', methods=['PUT'])
+@token_required  # JWT authentication decorator
+def update_student(student_id):
+    try:
+        data = request.get_json()
+        
+        # Check if student exists
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT id FROM students WHERE id = %s", (student_id,))
+        if not cursor.fetchone():
+            return jsonify({'error': 'Student not found'}), 404
+        
+        # Build dynamic update query based on provided fields
+        updates = []
+        values = []
+        
+        if 'name' in data:
+            if not data['name'] or not data['name'].strip():
+                return jsonify({'error': 'Name cannot be empty'}), 400
+            updates.append("name = %s")
+            values.append(data['name'].strip())
+        
+        if 'course' in data:
+            if not data['course'] or not data['course'].strip():
+                return jsonify({'error': 'Course cannot be empty'}), 400
+            updates.append("course = %s")
+            values.append(data['course'].strip())
+        
+        if 'age' in data:
+            try:
+                age = int(data['age'])
+                if not 16 <= age <= 60:
+                    return jsonify({'error': 'Age must be between 16 and 60'}), 400
+                updates.append("age = %s")
+                values.append(age)
+            except (ValueError, TypeError):
+                return jsonify({'error': 'Age must be a valid integer'}), 400
+        
+        if not updates:
+            return jsonify({'error': 'No fields to update'}), 400
+        
+        # Add student_id to values
+        values.append(student_id)
+        
+        # Execute update
+        query = f"UPDATE students SET {', '.join(updates)} WHERE id = %s"
+        cursor.execute(query, values)
+        mysql.connection.commit()
+        
+        # Get updated student data
+        cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+        updated_student = cursor.fetchone()
+        
+        return jsonify({
+            'message': 'Student updated successfully',
+            'student': {
+                'id': updated_student[0],
+                'name': updated_student[1],
+                'course': updated_student[2],
+                'age': updated_student[3]
+            }
+        }), 200
+        
+    except Exception as e:
+        mysql.connection.rollback()
+        return jsonify({'error': str(e)}), 500
