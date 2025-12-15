@@ -8,9 +8,45 @@
     <div class="container mt-4">
         <h1 class="mb-4">Students List</h1>
         
+        <!-- Navigation -->
         <div class="mb-3">
             <a href="/" class="btn btn-secondary">Home</a>
             <a href="/students/create" class="btn btn-primary">Add Student</a>
+            {% if session.username %}
+                <span class="ms-3">Welcome, {{ session.username }}!</span>
+                <a href="/logout" class="btn btn-outline-danger btn-sm">Logout</a>
+            {% else %}
+                <a href="/login" class="btn btn-outline-primary">Login</a>
+                <a href="/register" class="btn btn-outline-success">Register</a>
+            {% endif %}
+        </div>
+        
+        <!-- Search Box -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <form action="/students" method="GET" class="row g-2">
+                    <div class="col-md-8">
+                        <input type="text" class="form-control" name="q" 
+                               value="{{ search_query }}" 
+                               placeholder="Search by name or course...">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">Search</button>
+                    </div>
+                    <div class="col-md-2">
+                        <a href="/students" class="btn btn-secondary w-100">Clear</a>
+                    </div>
+                </form>
+                
+                {% if search_query %}
+                <div class="mt-2">
+                    <small class="text-muted">
+                        Search results for: <strong>"{{ search_query }}"</strong>
+                        ({{ students|length }} students found)
+                    </small>
+                </div>
+                {% endif %}
+            </div>
         </div>
         
         {% if students %}
@@ -66,10 +102,17 @@
         
         <div class="alert alert-info">
             Total Students: {{ students|length }}
+            {% if search_query %}
+                (Filtered)
+            {% endif %}
         </div>
         {% else %}
         <div class="alert alert-warning">
-            No students found. <a href="/students/create">Add your first student</a>.
+            {% if search_query %}
+                No students found matching "{{ search_query }}"
+            {% else %}
+                No students found. <a href="/students/create">Add your first student</a>.
+            {% endif %}
         </div>
         {% endif %}
     </div>
@@ -86,8 +129,32 @@
         
         function deleteStudent(studentId) {
             if (confirm('Delete this student?')) {
-                // In real implementation, use AJAX with JWT
-                alert('Delete would require JWT token. Use API directly.');
+                // Check if user is logged in
+                const token = '{{ session.get("jwt_token", "") }}';
+                
+                if (!token) {
+                    alert('Please login first to delete students');
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                fetch('/api/students/' + studentId + '?confirm=true', {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                })
+                .then(response => {
+                    if (response.status === 204) {
+                        alert('Student deleted successfully');
+                        location.reload();
+                    } else {
+                        alert('Delete failed');
+                    }
+                })
+                .catch(error => {
+                    alert('Error: ' + error.message);
+                });
             }
         }
     </script>
