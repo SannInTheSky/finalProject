@@ -148,3 +148,44 @@ def update_student(student_id):
     except Exception as e:
         mysql.connection.rollback()
         return jsonify({'error': str(e)}), 500
+    
+    # Delete student by ID
+@app.route('/api/students/<int:student_id>', methods=['DELETE'])
+@token_required  # JWT authentication decorator
+def delete_student(student_id):
+    try:
+        cursor = mysql.connection.cursor()
+        
+        # Check if student exists
+        cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+        student = cursor.fetchone()
+        
+        if not student:
+            return jsonify({'error': 'Student not found'}), 404
+        
+        # Optional: Check for confirm parameter
+        confirm = request.args.get('confirm', 'false').lower()
+        if confirm != 'true':
+            return jsonify({
+                'message': 'Add ?confirm=true to confirm deletion',
+                'student': {
+                    'id': student[0],
+                    'name': student[1],
+                    'course': student[2],
+                    'age': student[3]
+                }
+            }), 200
+        
+        # Delete the student
+        cursor.execute("DELETE FROM students WHERE id = %s", (student_id,))
+        mysql.connection.commit()
+        
+        # Check if deletion was successful
+        if cursor.rowcount > 0:
+            return '', 204  # No Content on successful deletion
+        else:
+            return jsonify({'error': 'Deletion failed'}), 500
+            
+    except Exception as e:
+        mysql.connection.rollback()
+        return jsonify({'error': str(e)}), 500
